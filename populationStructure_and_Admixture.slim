@@ -1,3 +1,5 @@
+// This script simulates two genetically divergent subpopulations, which are isolated for the first 50 generations that we track, but which then come together to form an admixed population, which we track for a further 50 generations. Mating is random in each subpopulation and in the admixed population. In each generation, we perform a population-wide and a sibling GWAS for the focal trait, which is encoded by the 1000 loci at which we perform the GWASs. Effect sizes at these loci are randomly chosen at the outset. 
+
 initialize() {
 	initializeSLiMModelType("nonWF");
 	
@@ -12,12 +14,10 @@ initialize() {
 	defineConstant("Loci", 0:(L-1)); // list of loci
 	
 	defineConstant("MAF", 0.2); // minimum minor-allele freq in ancestral population
+	defineConstant("ancestralFreqs", runif(L, MAF, 1-MAF));	// freq of reference allele at each locus in ancestral pop
 	
 	defineConstant("targetFST", 0.1);	// desired level of FST between the two subpops
-	defineConstant("DivergenceTime", 4*(N/2)*targetFST);	// time it would take for the subpops, in allopatry, to genetically diverge via neutral drift such that the value of FST is targetFST
-	
-	defineConstant("ancestralFreqs", runif(L, MAF, 1-MAF));	// freq of reference allele at each locus in ancestral pop
-	defineConstant("driftSD", sqrt(DivergenceTime*ancestralFreqs*(1-ancestralFreqs)/(2*N/2)));	// ~standard deviation of allele frequency change in each subpop under drift for DivergenceTime gens
+	defineConstant("driftSD", sqrt(2*ancestralFreqs*(1-ancestralFreqs)*targetFST));	// ~standard deviation of allele frequency change in each subpop to get targetFST
 	
 	freqs1prelim = rnorm(L,ancestralFreqs, driftSD);
 	freqs2prelim = rnorm(L,ancestralFreqs, driftSD);	// preliminary diverged allele freqs in the two subpopulations; note that, as they stand here, they could be outside [0,1]
