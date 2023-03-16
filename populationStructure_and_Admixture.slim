@@ -1,0 +1,396 @@
+initialize() {
+	initializeSLiMModelType("nonWF");
+	
+	defineConstant("map", "Human");	// "Human" or "stylized" (one chrom of length 1 Morgan)
+	defineConstant("mapFolder", "/Users/Who/folderWhereLinkageMapsAre/");
+	
+	defineConstant("resultsFolder", "/Users/Who/folderToWhereResultsShouldBeWritten/");
+	
+	defineConstant("N", 40000);	// Size of ancestral population, which splits into two subpopulations of size N/2 each; they later admix to form a pop of size N. N must be a multiple of 8
+	
+	defineConstant("L", 1000);	// number of loci
+	defineConstant("Loci", 0:(L-1)); // list of loci
+	
+	defineConstant("MAF", 0.2); // minimum minor-allele freq in ancestral population
+	
+	defineConstant("targetFST", 0.1);	// desired level of FST between the two subpops
+	defineConstant("DivergenceTime", 4*(N/2)*targetFST);	// time it would take for the subpops, in allopatry, to genetically diverge via neutral drift such that the value of FST is targetFST
+	
+	defineConstant("ancestralFreqs", runif(L, MAF, 1-MAF));	// freq of reference allele at each locus in ancestral pop
+	defineConstant("driftSD", sqrt(DivergenceTime*ancestralFreqs*(1-ancestralFreqs)/(2*N/2)));	// ~standard deviation of allele frequency change in each subpop under drift for DivergenceTime gens
+	
+	freqs1prelim = rnorm(L,ancestralFreqs, driftSD);
+	freqs2prelim = rnorm(L,ancestralFreqs, driftSD);	// preliminary diverged allele freqs in the two subpopulations; note that, as they stand here, they could be outside [0,1]
+	
+	// if any subpop allele freqs are <0, make them 0; if > 1, make them 1
+	for (locus in Loci){
+	if (freqs1prelim[locus]<0)
+	{
+	freqs1prelim[locus]=0;
+	}
+	if (freqs2prelim[locus]<0)
+	{
+	freqs2prelim[locus]=0;
+	}
+	if (freqs1prelim[locus]>1)
+	{
+	freqs1prelim[locus]=1;
+	}
+	if (freqs2prelim[locus]>1)
+	{
+	freqs2prelim[locus]=1;
+	}
+	}
+	
+	defineConstant("counts1", asInteger(round(freqs1prelim*(N))));
+	defineConstant("counts2", asInteger(round(freqs2prelim*(N))));	// change allele freqs to counts
+	defineConstant("countsAve", (counts1+counts2)/2); // average ref allele counts across whole pop
+	
+	defineConstant("alpha", rnorm(L,0,1)); // size of effects of reference alleles on the trait
+	
+	// set up useful matrices for calculating trait values
+	defineConstant("EffectMat1", matrix(rep(alpha,1),nrow=1,byrow=T));
+	defineConstant("EffectMat", matrix(rep(alpha,N),nrow=N,byrow=T));
+	defineConstant("EffectMat2", matrix(rep(alpha,asInteger(2*N)),nrow=2*N,byrow=T));
+	
+	// indices of male individuals
+	defineConstant("IsMale", c(rep(0,N),rep(1,N)));
+	defineConstant("IsMale1", c(rep(0,asInteger(N/2)),rep(1,asInteger(N/2))));
+	
+	// set up temporary files for use in sibling GWAS each generation
+	defineConstant("GenoDiffTrackingFile", resultsFolder+"GenoDiffTracking.csv");
+	defineConstant("ScoreDiffTrackingFile", resultsFolder+"ScoreDiffTracking.csv");
+	
+	// set up files to write results to
+	defineConstant("PopGWAS", resultsFolder+"PopGWAS.csv");
+	defineConstant("SibGWAS", resultsFolder+"SibGWAS.csv");
+	defineConstant("TrueVals", resultsFolder+"TrueVals.csv");
+	defineConstant("FSTfile", resultsFolder+"FST.csv");
+	
+	initializeMutationRate(0);
+	initializeMutationType("m1", 0.5, "f", 0.0);	// marks the reference allele at each locus
+	m1.convertToSubstitution = F;
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, L-1);
+	
+	initializeSex("A");
+	
+// input (interpolated) human linkage map, or stylized one-chrom map of length 1 Morgan
+	if (map == "Human")
+	{
+	
+	// input male recombination
+	lines = readFile(mapFolder + "linkageMapForSLiM_Human_Male_1kLoci.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, 1:(L-1), sex="M");
+	
+	// input female recombination
+	lines = readFile(mapFolder + "linkageMapForSLiM_Human_Female_1kLoci.txt");
+	rates = NULL;
+	for (line in lines)
+	{
+		components = strsplit(line, "\t");
+		rates = c(rates, asFloat(components[0]));
+	}
+	initializeRecombinationRate(rates, 1:(L-1), sex="F");
+	
+	}
+	else
+	initializeRecombinationRate(1/(L-1));
+
+}
+
+
+// create two subpopulations
+1 early() {
+	sim.addSubpop("p1", asInteger(N/2));
+	sim.addSubpop("p2", asInteger(N/2));		
+}
+
+// seed the subpops with reference alleles at their predefined frequencies, in Hardy-Weinberg and linkage equilibrium (in expectation)
+1 early() {
+	
+	for (l in Loci)
+	{
+		sampledGenomes_pop1 = sample(p1.individuals.genomes, counts1[l]);		
+		sampledGenomes_pop1.addNewMutation(m1, 0, l);	// randomly sample counts1[l] haploid genomes in subpop 1 (without replacement) and add the ref allele at locus l to these genomes
+		
+		sampledGenomes_pop2 = sample(p2.individuals.genomes, counts2[l]);		
+		sampledGenomes_pop2.addNewMutation(m1, 0, l);	// " " subpop 2
+	}
+
+}
+
+// kill off parents each generation, to maintain constant population size
+early() {
+	// life table based individual mortality
+	inds = sim.subpopulations.individuals;
+	ages = inds.age;
+	inds.fitnessScaling = 1-ages; // non-overlapping generations
+}
+
+
+//	SUBPOPS SEPARATED; CALCULATE FST	//
+
+1:49 early() {
+
+// define functions to count reference alleles in the two subpops
+countAlleles1 = "asInteger(inds1.genome1.containsMarkerMutation(m1, applyValue)) + asInteger(inds1.genome2.containsMarkerMutation(m1, applyValue));";
+countAlleles2 = "asInteger(inds2.genome1.containsMarkerMutation(m1, applyValue)) + asInteger(inds2.genome2.containsMarkerMutation(m1, applyValue));";
+
+inds1 = p1.individuals;
+Genos1 = sapply(Loci, countAlleles1);
+Genos1 = matrix(Genos1, nrow = asInteger(N/2));	// element (n,l) is the number of reference alleles carried by subpop 1 member n at locus l
+
+inds2 = p2.individuals;
+Genos2 = sapply(Loci, countAlleles2);
+Genos2 = matrix(Genos2, nrow = asInteger(N/2));	// " " subpop 2
+
+p_pop1 = NULL;	// will be a list of reference allele freqs in subpop 1
+p_pop2 = NULL;	// " " subpop 2
+p_ave = NULL;	// will be a list of reference allele freqs in the whole populations
+FST = NULL;	// will be a list of FST values across loci
+	for (l in Loci)
+	{	
+		LocusGenos1 = c(Genos1[,l]);	// list of reference allele counts at locus l in subpop 1
+		LocusGenos2 = c(Genos2[,l]);	// " " subpop 2
+		p_pop1_thisLocus = (sum(LocusGenos1))/(2*N/2);	// freq of ref allele at locus l in subpop 1
+		p_pop2_thisLocus = (sum(LocusGenos2))/(2*N/2);	// " " subpop2
+		p_ave_thisLocus = (p_pop1_thisLocus+p_pop2_thisLocus)/2; // freq of ref allele in whole pop
+		// Check if the locus is fixed across both subpops (in which case FST is not defined); if not, record subpop and overall freqs of  referenceallele, and calculate FST at this locus.
+		if (p_ave_thisLocus > 0 & p_ave_thisLocus < 1)
+		{
+		p_ave = c(p_ave, p_ave_thisLocus);
+		p_pop1 = c(p_pop1, p_pop1_thisLocus);
+		p_pop2 = c(p_pop1, p_pop2_thisLocus);
+		FST = c(FST, (p_ave_thisLocus*(1-p_ave_thisLocus) - 0.5*(p_pop1_thisLocus*(1-p_pop1_thisLocus) + p_pop2_thisLocus*(1-p_pop2_thisLocus)))/(p_ave_thisLocus*(1-p_ave_thisLocus)));
+	}
+	}
+	writeFile(FSTfile, ""+mean(FST), append=T);	// write mean FST across loci to results file
+
+
+}
+
+
+
+
+//  POPULATIONS ADMIX  //
+
+50 first() {
+	// set up admixed pop p3 as full combination of subpops p1 and p2
+	sim.addSubpop("p3", 0);
+	
+	for (migrant in p1.individuals)
+	{
+		p3.takeMigrants(migrant);
+	}
+	
+	for (migrant in p2.individuals)
+	{
+		p3.takeMigrants(migrant);
+	}
+	
+	sim.killIndividuals(p1.individuals);
+	sim.killIndividuals(p2.individuals);	// eliminate the subpops
+
+}
+
+
+//  TWO OFFSPRING PER MATING COUPLE  //
+// (when subpops isolated, and in admixed pop)
+
+1: reproduction() {
+	
+	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus across all individuals
+	countAllelesOffspring1 = "asInteger(offspring1.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring1.genome2.containsMarkerMutation(m1, applyValue));";
+	countAllelesOffspring2 = "asInteger(offspring2.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring2.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus in offspring
+	
+	for (thisSubpop in sim.subpopulations)	// covers the case where subpops (p1 & p2) are isolated, and the case of the admixed pop (p3)
+	{
+		inds = thisSubpop.individuals;
+		subpopSize = length(inds);
+		femaleNumber = length(inds[inds.sex=="F"]);
+		
+//		if (subpopSize>0)
+//		{
+//		catn(c("gen", sim.cycle));
+//		}		
+		
+		if (subpopSize>0)	// after admixture, p1 and p2 still "exist", though they have size 0
+		{
+			// to get random mating, we randomly permute the male indices and the female indices, and have them mate in order of their permuted indices
+			permuteFemale = sample(0:(asInteger(subpopSize/2)-1), asInteger(subpopSize/2));
+			permuteMale = sample(0:(asInteger(subpopSize/2)-1), asInteger(subpopSize/2));
+			
+			FemaleInds = inds[0:(subpopSize/2-1)];
+			MaleInds = inds[(subpopSize/2):(subpopSize-1)];
+			FemaleIndsOrdered = FemaleInds[permuteFemale];
+			MaleIndsOrdered = MaleInds[permuteMale];
+			
+			
+			// To ensure an equal sex ratio in each subpop/pop in the next generation, the first quarter of mating pairs in a given subpop/pop will have two daughters, the next half will have a daughter and a son, and the remaining quarter will have two sons.			
+			mateCount = 0;
+			for (i in 0:(subpopSize/2-1))
+			{
+				mateCount = mateCount + 1;
+				
+				FemaleMate = FemaleIndsOrdered[i];
+				MaleMate = MaleIndsOrdered[i];
+				
+				if (mateCount < subpopSize/8 + 0.5)
+				{
+					sex1 = "F";
+					sex2 = "F";
+				}
+				else
+				{if (mateCount > subpopSize/8 + 0.5  &  mateCount < 3*subpopSize/8 + 0.5)
+					{
+						sex1 = "F";
+						sex2 = "M";
+					}
+					else
+					{sex1 = "M";
+						sex2 = "M";
+					}
+				}
+				
+				offspring1 = thisSubpop.addCrossed(FemaleMate, MaleMate, sex1);
+				offspring2 = thisSubpop.addCrossed(FemaleMate, MaleMate, sex2); // generates offspring for each mate pairing
+				
+				// count number of ref alleles at each locus in the two offspring, and record the difference
+				GenoOffspring1 = sapply( Loci, countAllelesOffspring1) - 1;
+				GenoOffspring1 = matrix(GenoOffspring1, nrow = 1);
+				
+				GenoOffspring2 = sapply( Loci, countAllelesOffspring2) - 1;
+				GenoOffspring2 = matrix(GenoOffspring2, nrow = 1);
+				
+				GenoDiff = GenoOffspring1 - GenoOffspring2;
+				
+				// calculate the trait vals of the two offspring, and record the difference
+				ScoreOffspring1 = GenoOffspring1*EffectMat1;
+				ScoreOffspring1 = apply(ScoreOffspring1, 0, "sum(applyValue);");
+				
+				ScoreOffspring2 = GenoOffspring2*EffectMat1;
+				ScoreOffspring2 = apply(ScoreOffspring2, 0, "sum(applyValue);");
+				
+				ScoreDiff = ScoreOffspring1 - ScoreOffspring2;
+				
+				// write genotypic and phenotypic differences between the offspring to temporary files
+				writeFile(GenoDiffTrackingFile, ""+GenoDiff, append=T);
+				writeFile(ScoreDiffTrackingFile, ""+ScoreDiff, append=T);
+			
+			}
+		}
+	}
+	
+	// disable this callback for this generation
+	self.active = 0;
+
+}
+
+
+//  POPULATION-WIDE GWAS  //
+
+2: late() {
+	
+	inds = sim.subpopulations.individuals;
+	
+	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
+// function to count # reference alleles at each locus
+	
+	Genos = sapply(Loci, countAlleles)-1;
+	Genos = matrix(Genos, nrow = N); // NxL matrix, element (n,l) = # ref alleles carried by indiv n at locus l
+	
+	Scores = Genos*EffectMat; // per-locus contributions to each indivs trait
+	Scores = apply(Scores, 0, "sum(applyValue);"); // total trait values
+	
+	// perform population-wide GWAS on the trait at every locus l
+	Betas = NULL;	// will be a list of effect size estimates
+	p = NULL;	// reference allele frequencies
+	alphas_seg = NULL;
+	for (l in Loci){
+		
+		LocusGenos = c(Genos[,l]);
+		pThisLocus = (sum(LocusGenos)+N)/(2*N); // "+N" because of genotype normalization to -1,0,+1
+		if (pThisLocus > 0 & pThisLocus < 1) // if locus polymorphic
+		{
+		p = c(p,pThisLocus); // record allele freq at locus
+		popGWAS = cov(LocusGenos,Scores)/var(LocusGenos);	// perform OLS
+		Betas = c(Betas, popGWAS);	// record OLS estimate of effect size
+		alphas_seg = c(alphas_seg, alpha[l]);		// record true effect size
+		}
+	
+	}
+	
+	// write to results file the average squared estimated and true effect size both unweighted and weighted by heterozygosity at the locus 
+	writeFile(PopGWAS, ""+mean(Betas^2), append=T);
+	writeFile(PopGWAS, ""+mean(2*p*(1-p)*Betas^2), append=T);
+	
+	writeFile(TrueVals, ""+mean(alphas_seg^2), append=T);
+	writeFile(TrueVals, ""+mean(2*p*(1-p)*alphas_seg^2), append=T);
+
+}
+
+//  SIBLING GWAS  //
+
+2: late() {
+	
+	// to calculate allele freqs:
+	inds = sim.subpopulations.individuals;
+	
+	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus
+	
+	Genos = sapply(Loci, countAlleles)-1;
+	Genos = matrix(Genos, nrow = N); // NxL matrix, element (n,l) = # ref alleles carried by indiv n at locus l
+	
+	// for the sib GWAS itself:
+	GenoDiff = readFile(GenoDiffTrackingFile);	// read the file of genotype differences among siblings that we generated above
+	GenoDiff = matrix(GenoDiff, nrow = asInteger(N/2),  byrow=T );
+	
+	ScoreDiff = readFile(ScoreDiffTrackingFile);
+	ScoreDiff = matrix(ScoreDiff, nrow = asInteger(N/2));	// read the file of phenotype differences among siblings that we generated above
+	ScoreDiff = c(asFloat(ScoreDiff));
+	
+	// perform sibling GWAS at every locus l
+	p = NULL;
+	Betas = NULL;	// will be a list of effect size estimates
+	for (l in Loci)
+	{	
+		// calculate reference allele freq
+		LocusGenos = c(Genos[,l]);
+		LocusGenoDiffs = c(asFloat(GenoDiff[,l]));
+		
+		pThisLocus = (sum(LocusGenos)+N)/(2*N);
+		if (pThisLocus > 0 & pThisLocus < 1 & var(LocusGenoDiffs) > 0) // if sibs not all identical
+														// Note: first two conditionals are redundant given third,
+														// included for clarity
+		{
+		p = c(p,pThisLocus);
+		
+		// perform sib GWAS
+		LocusGenoDiffs = c(asFloat(GenoDiff[,l]));
+		sibGWAS = cov(LocusGenoDiffs,ScoreDiff)/var(LocusGenoDiffs);	// regression of sib differences in phenotype on sib differences in genotype
+		Betas = c(Betas, sibGWAS);	// record effect size estimate (note that we recorded the true effect sizes at these loci in the pop GWAS; no need to repeat here)
+		}
+	}
+	
+	// write to results file the average squared estimated effect size both unweighted and weighted by heterozygosity at the locus 
+	writeFile(SibGWAS, ""+mean(Betas^2), append=T);
+	writeFile(SibGWAS, ""+mean(2*p*(1-p)*Betas^2), append=T);
+	
+	// delete the temporary storage files
+	deleteFile(GenoDiffTrackingFile);
+	deleteFile(ScoreDiffTrackingFile);
+
+}
+
+
+100 late() {sim.simulationFinished();}
