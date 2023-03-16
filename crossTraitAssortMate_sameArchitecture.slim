@@ -88,6 +88,7 @@ initialize() {
 	initializeRecombinationRate(1/(L-1));
 
 }
+
 1 early() {
 	sim.addSubpop("p1", N);
 }
@@ -96,11 +97,9 @@ initialize() {
 1 early() {
 	
 	for (l in Loci)
-	{
-		sampledIndividuals_locus1_genome1 = sample(p1.individuals, asInteger(N/2));
-		sampledIndividuals_locus1_genome1.genome1.addNewMutation(m1, 0, l);
-		sampledIndividuals_locus1_genome2 = sample(p1.individuals, asInteger(N/2));
-		sampledIndividuals_locus1_genome2.genome2.addNewMutation(m1, 0, l);
+	{	
+		sampledGenomes_locusl = sample(p1.individuals.genomes, N);
+		sampledGenomes_locusl.addNewMutation(m1, 0, l);
 	}
 
 }
