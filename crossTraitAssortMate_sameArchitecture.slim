@@ -418,9 +418,10 @@ early() {
 		
 		YDiff = YScoreOffspring1 - YScoreOffspring2;
 		
+		// write sibling diffs in genotypes and in trait values to temporary storage files, which we'll use to perform the sibling GWAS
 		writeFile(GenoDiffTrackingFile, ""+GenoDiff, append=T);
 		writeFile(XDiffTrackingFile, ""+XDiff, append=T);
-		writeFile(YDiffTrackingFile, ""+YDiff, append=T);	// write sibling diffs in genotypes and in trait values to temporary storage files, which we'll use to perform the sibling GWAS
+		writeFile(YDiffTrackingFile, ""+YDiff, append=T);	
 	
 	
 	}
