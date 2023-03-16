@@ -1,4 +1,4 @@
-// This script simulates cross-trait assortative mating between traits X and Y for 20 generations, followed by random mating for a further 20 generations. The cross-trait assortative mating is sex-asymmetric, with a constant female-male X-Y correlation of 0.2. Traits X and Y are encoded by distinct sets of 500 loci each. In each generation, a population GWAS and a sibling GWAS are performed for traits X and Y across all 1000 loci. 
+// This script simulates random mating for 150 generations, then cross-trait assortative mating between traits X and Y for 20 generations, followed by random mating for a further 20 generations. The cross-trait assortative mating is sex-asymmetric, with a constant female-male X-Y correlation of 0.2. Trait X is encoded by 100 loci, while trait Y is encoded by 1000 loci; these sets of loci are distinct, and venly interspersed amongst each other. Effect sizes at the loci are chosen randomly, such that the genic variances of the two traits are the same. In each generation, a population GWAS and a sibling GWAS are performed for traits X and Y across all 1100 loci.
 
 initialize() {
 	initializeSLiMModelType("nonWF");
@@ -8,18 +8,23 @@ initialize() {
 	
 	defineConstant("resultsFolder", "/Users/Who/folderToWhereResultsShouldBeWritten/");
 	
-	defineConstant("N", 40000);	// no. individuals in the population; must be a multiple of 8
+	defineConstant("N", 40000);	// no. individuals in the population; must be a multiple of 8	
 	
-	defineConstant("L", 1000);	// number of loci
-	defineConstant("Loci", 0:(L-1)); // list of loci
+	defineConstant("L", 1100);	// total number of loci
+	defineConstant("LX", 100);	// number of loci underlying trait X
+	defineConstant("LY", 1000);	// number of loci  underlying trait Y
+	defineConstant("Loci", 0:(L-1)); // list of all loci
 	
-	// the loci underlying X and Y are evenly interspersed, and uniform throughout the genome
-	defineConstant("XLoci", 2*(0:(asInteger(L/2)-1))); // list of trait X loci
-	defineConstant("YLoci", 2*(0:(asInteger(L/2)-1))+1); // list of trait Y loci
+	defineConstant("XLoci", asInteger(((LY/LX)+1)*(0:(LX-1)) + (LY/LX)/2)); // list of trait-X loci
+	defineConstant("YLoci", setDifference( Loci , XLoci )); // list of trait-Y loci
 	
-	// effect sizes at these loci are constant (normalized to 1)
-	defineConstant("aX", rep(1, asInteger(L/2))); // per-allele effect on trait X
-	defineConstant("aY", rep(1, asInteger(L/2))); // per-allele effect on trait Y
+	// effect sizes and initial frequencies at these loci are chosen randomly, such that the genic variances of the two traits are the same in expectation
+	defineConstant("aX", rnorm(LX,0,sqrt(LY/LX))); // per-allele effect on trait X
+	defineConstant("aY", rnorm(LY,0,1)); // per-allele effect on trait Y
+	
+	defineConstant("MAF", 0.1); // minimum minor-allele frequency
+	defineConstant("initialCounts", asInteger(runif(L, asInteger(MAF*2*N), asInteger((1-MAF)*2*N)))); 
+	// initial counts of focal allele at each locus
 	
 	// set up useful matrices with which to calculate trait values
 	defineConstant("XEffectMat1", matrix(rep(aX,1),nrow=1,byrow=T));
@@ -40,19 +45,66 @@ initialize() {
 												  // (for a given noise size, the realized correlation is noisy)
 	
 	// set up temporary files for use in sibling GWAS each generation
-	defineConstant("GenoDiffTrackingFile", resultsFolder+"GenoDiffTracking.csv");
-	defineConstant("XDiffTrackingFile", resultsFolder+"XDiffTracking.csv");
-	defineConstant("YDiffTrackingFile", resultsFolder+"YDiffTracking.csv");
+	defineConstant("GenoDiffTrackingFile", results_path+"GenoDiffTracking.csv");
+	defineConstant("XDiffTrackingFile", results_path+"XDiffTracking.csv");
+	defineConstant("YDiffTrackingFile", results_path+"YDiffTracking.csv");
 	
-	// set up files to write results to
-	defineConstant("XPopGWAS", resultsFolder+"XPopGWAS_humanMap.csv");
-	defineConstant("YPopGWAS", resultsFolder+"YPopGWAS_humanMap.csv");
+	// set up files to write results to (there are many -- could be consolidated!)
 	
-	defineConstant("XSibGWAS", resultsFolder+"XSibGWAS_humanMap.csv");
-	defineConstant("YSibGWAS", resultsFolder+"YSibGWAS_humanMap.csv");
+	defineConstant("XPopGWAS_meanSquared_Causal", results_path+"XPopGWAS_meanSquared_Causal.csv");
+	defineConstant("YPopGWAS_meanSquared_Causal", results_path+"YPopGWAS_meanSquared_Causal.csv");
+	
+	defineConstant("XPopGWAS_meanHetSquared_Causal", results_path+"XPopGWAS_meanHetSquared_Causal.csv");
+	defineConstant("YPopGWAS_meanHetSquared_Causal", results_path+"YPopGWAS_meanHetSquared_Causal.csv");
+	
+	defineConstant("XPopGWAS_allSquared_Causal", results_path+"XPopGWAS_allSquared_Causal.csv");
+	defineConstant("YPopGWAS_allSquared_Causal", results_path+"YPopGWAS_allSquared_Causal.csv");
+	
+	defineConstant("XPopGWAS_allHetSquared_Causal", results_path+"XPopGWAS_allHetSquared_Causal.csv");
+	defineConstant("YPopGWAS_allHetSquared_Causal", results_path+"YPopGWAS_allHetSquared_Causal.csv");
+	
+	
+	defineConstant("XSibGWAS_meanSquared_Causal", results_path+"XSibGWAS_meanSquared_Causal.csv");
+	defineConstant("YSibGWAS_meanSquared_Causal", results_path+"YSibGWAS_meanSquared_Causal.csv");
+	
+	defineConstant("XSibGWAS_meanHetSquared_Causal", results_path+"XSibGWAS_meanHetSquared_Causal.csv");
+	defineConstant("YSibGWAS_meanHetSquared_Causal", results_path+"YSibGWAS_meanHetSquared_Causal.csv");
+	
+	defineConstant("XSibGWAS_allSquared_Causal", results_path+"XSibGWAS_allSquared_Causal.csv");
+	defineConstant("YSibGWAS_allSquared_Causal", results_path+"YSibGWAS_allSquared_Causal.csv");
+	
+	defineConstant("XSibGWAS_allHetSquared_Causal", results_path+"XSibGWAS_allHetSquared_Causal.csv");
+	defineConstant("YSibGWAS_allHetSquared_Causal", results_path+"YSibGWAS_allHetSquared_Causal.csv");
+	
+	
+	defineConstant("XPopGWAS_meanSquared_nonCausal", results_path+"XPopGWAS_meanSquared_nonCausal.csv");
+	defineConstant("YPopGWAS_meanSquared_nonCausal", results_path+"YPopGWAS_meanSquared_nonCausal.csv");
+	
+	defineConstant("XPopGWAS_meanHetSquared_nonCausal", results_path+"XPopGWAS_meanHetSquared_nonCausal.csv");
+	defineConstant("YPopGWAS_meanHetSquared_nonCausal", results_path+"YPopGWAS_meanHetSquared_nonCausal.csv");
+	
+	defineConstant("XPopGWAS_allSquared_nonCausal", results_path+"XPopGWAS_allSquared_nonCausal.csv");
+	defineConstant("YPopGWAS_allSquared_nonCausal", results_path+"YPopGWAS_allSquared_nonCausal.csv");
+	
+	defineConstant("XPopGWAS_allHetSquared_nonCausal", results_path+"XPopGWAS_allHetSquared_nonCausal.csv");
+	defineConstant("YPopGWAS_allHetSquared_nonCausal", results_path+"YPopGWAS_allHetSquared_nonCausal.csv");
+	
+	
+	defineConstant("XSibGWAS_meanSquared_nonCausal", results_path+"XSibGWAS_meanSquared_nonCausal.csv");
+	defineConstant("YSibGWAS_meanSquared_nonCausal", results_path+"YSibGWAS_meanSquared_nonCausal.csv");
+	
+	defineConstant("XSibGWAS_meanHetSquared_nonCausal", results_path+"XSibGWAS_meanHetSquared_nonCausal.csv");
+	defineConstant("YSibGWAS_meanHetSquared_nonCausal", results_path+"YSibGWAS_meanHetSquared_nonCausal.csv");
+	
+	defineConstant("XSibGWAS_allSquared_nonCausal", results_path+"XSibGWAS_allSquared_nonCausal.csv");
+	defineConstant("YSibGWAS_allSquared_nonCausal", results_path+"YSibGWAS_allSquared_nonCausal.csv");
+	
+	defineConstant("XSibGWAS_allHetSquared_nonCausal", results_path+"XSibGWAS_allHetSquared_nonCausal.csv");
+	defineConstant("YSibGWAS_allHetSquared_nonCausal", results_path+"YSibGWAS_allHetSquared_nonCausal.csv");
+	
 	
 	initializeMutationRate(0);
-	initializeMutationType("m1", 0.5, "f", 0.0);	// marks the reference allele at each locus
+	initializeMutationType("m1", 0.5, "f", 0.0);	// all alleles
 	m1.convertToSubstitution = F;
 	initializeGenomicElementType("g1", m1, 1.0);
 	initializeGenomicElement(g1, 0, L-1);
@@ -89,22 +141,25 @@ initialize() {
 
 }
 
+
 1 early() {
 	sim.addSubpop("p1", N);
 }
 
-// Introduce reference (trait-increasing) alleles at 50% freq at each locus, in Hardy-Weinberg and linkage equilibrium (in expectation). 
+
+// Introduce reference alleles at predetermined freq at each locus, in Hardy-Weinberg and linkage equilibrium (in expectation). 
 1 early() {
 	
 	for (l in Loci)
-	{	
-		sampledGenomes_locusl = sample(p1.individuals.genomes, N);
+	{
+		sampledGenomes_locusl = sample(p1.individuals.genomes, initialCounts[l]);
 		sampledGenomes_locusl.addNewMutation(m1, 0, l);
 	}
 
 }
 
 // Perform population GWAS
+
 2: late() {
 	
 	inds = sim.subpopulations.individuals;
@@ -115,24 +170,26 @@ initialize() {
 	Genos = sapply(Loci, countAlleles) - 1;
 	Genos = matrix(Genos, nrow = N); // NxL matrix, element (n,l) = # ref alleles (minus 1) carried by indiv n at locus l
 	
-	XGenos = Genos[,XLoci]; // Nx(L/2) matrix, # ref alleles at trait-X loci
-	YGenos = Genos[,YLoci]; // " " trait-Y loci
+	XGenos = Genos[,XLoci]; // Nx(LX/2) matrix, # ref alleles at trait-X loci
+	YGenos = Genos[,YLoci]; // Nx(LY/2) matrix, # ref alleles at trait-Y loci
 	
 	XScores = XGenos*XEffectMat; // per-locus contributions to each indiv's value of trait X
-	XScores = apply(XScores, 0, "sum(applyValue);"); //  trait-X values
+	XScores = apply(XScores, 0, "sum(applyValue);"); // trait X values
 	
-	YScores = YGenos*YEffectMat;
-	YScores = apply(YScores, 0, "sum(applyValue);"); // " " trait-Y values
+	YScores = YGenos*YEffectMat; // " " Y
+	YScores = apply(YScores, 0, "sum(applyValue);"); // " " Y
 	
 	
 	// perform population-wide GWAS on both traits X and Y at every locus l
 	XBetas = NULL;
-	YBetas = NULL;		// effect size estimates
+	YBetas = NULL;	// effect size estimates
+	p = NULL;	// reference allele frequencies
 	for (l in Loci){
 		
 		LocusGenos = c(Genos[,l]);	// genotypes at locus l
-		popXGWAS = cov(LocusGenos,XScores)/var(LocusGenos);	// regression of trait-X value on genotype at l
-		popYGWAS = cov(LocusGenos,YScores)/var(LocusGenos);	// "" trait-Y
+		p = c(p,(sum(LocusGenos)+N)/(2*N)); // "+N" because of the genotype normalization to -1, 0, +1
+		popXGWAS = cov(LocusGenos,XScores)/var(LocusGenos);	// OLS regression of trait-X value on genotype at l
+		popYGWAS = cov(LocusGenos,YScores)/var(LocusGenos);	// " " trait Y
 		XBetas = c(XBetas, popXGWAS);
 		YBetas = c(YBetas, popYGWAS);	// collect slopes
 	
@@ -142,12 +199,37 @@ initialize() {
 	CausalYBetas = YBetas[YLoci]; // " " trait-Y
 	nonCausalXBetas = XBetas[YLoci];	// slopes at trait-Y loci in trait-X GWAS (true effects = 0)
 	nonCausalYBetas = YBetas[XLoci];	// slopes at trait-X loci in trait-Y GWAS (true effects = 0)
+	XFreqs = p[XLoci];
+	YFreqs = p[YLoci];	// frequencies of ref alleles at trait-X and at trait-Y loci
+	XHets = 2*XFreqs*(1-XFreqs);
+	YHets = 2*YFreqs*(1-YFreqs);	// HW heterozygosities at trait -X and at trait-Y loci
 	
-	writeFile(XPopGWAS, ""+mean(CausalXBetas), append=T);
-	writeFile(XPopGWAS, ""+mean(nonCausalXBetas), append=T);
+	// write to results files
+	writeFile(XPopGWAS_meanSquared_Causal, ""+mean(CausalXBetas^2), append=T);
+	writeFile(XPopGWAS_meanSquared_nonCausal, ""+mean(nonCausalXBetas^2), append=T);
 	
-	writeFile(YPopGWAS, ""+mean(CausalYBetas), append=T);
-	writeFile(YPopGWAS, ""+mean(nonCausalYBetas), append=T);	// write to results files
+	writeFile(YPopGWAS_meanSquared_Causal, ""+mean(CausalYBetas^2), append=T);
+	writeFile(YPopGWAS_meanSquared_nonCausal, ""+mean(nonCausalYBetas^2), append=T);
+	
+	writeFile(XPopGWAS_meanHetSquared_Causal, ""+mean(XHets*(CausalXBetas^2)), append=T);
+	writeFile(XPopGWAS_meanHetSquared_nonCausal, ""+mean(YHets*(nonCausalXBetas^2)), append=T);
+	
+	writeFile(YPopGWAS_meanHetSquared_Causal, ""+mean(YHets*(CausalYBetas^2)), append=T);
+	writeFile(YPopGWAS_meanHetSquared_nonCausal, ""+mean(XHets*(nonCausalYBetas^2)), append=T);
+	
+	
+	writeFile(XPopGWAS_allSquared_Causal, ""+CausalXBetas^2, append=T);
+	writeFile(XPopGWAS_allSquared_nonCausal, ""+nonCausalXBetas^2, append=T);
+	
+	writeFile(YPopGWAS_allSquared_Causal, ""+CausalYBetas^2, append=T);
+	writeFile(YPopGWAS_allSquared_nonCausal, ""+nonCausalYBetas^2, append=T);	
+	
+	writeFile(XPopGWAS_allHetSquared_Causal, ""+XHets*(CausalXBetas^2), append=T);
+	writeFile(XPopGWAS_allHetSquared_nonCausal, ""+YHets*(nonCausalXBetas^2), append=T);
+	
+	writeFile(YPopGWAS_allHetSquared_Causal, ""+YHets*(CausalYBetas^2), append=T);
+	writeFile(YPopGWAS_allHetSquared_nonCausal, ""+XHets*(nonCausalYBetas^2), append=T);
+
 
 }
 
@@ -156,6 +238,17 @@ initialize() {
 2: late() {
 
 	// further down this script is code to generate, each generation, a list of sibling differences in genotype and in trait values, written to the files "GenoDiffTrackingFile", "XDiffTrackingFile", and "YDiffTrackingFile"
+
+
+	// to calculate allele freqs
+	
+	inds = sim.subpopulations.individuals;
+	
+	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus
+	
+	Genos = sapply(Loci, countAlleles)-1;
+	Genos = matrix(Genos, nrow = N); // NxL matrix, element (n,l) = # ref alleles (minus 1) carried by indiv n at locus l
 	
 	GenoDiff = readFile(GenoDiffTrackingFile);
 	GenoDiff = matrix(GenoDiff, nrow = asInteger(N/2),  byrow=T );
@@ -171,17 +264,20 @@ initialize() {
 	// YDiff[n,l] is the difference in trait-Y values in the nth sibship
 	YDiffs = c(asFloat(YDiff));
 	
-	// perform sibling GWAS for both traits X and Y at every locus l
+	// perform sibling GWAS for both male and female traits at every locus l
 	
 	XBetas = NULL;
 	YBetas = NULL;	// effect size estimates
+	p = NULL;	// ref allele freqs
 	for (l in Loci)
-	{
-		LocusGenoDiffs = c(asFloat(GenoDiff[,l]));	// genotype diffs between sibs at locus l
-		sibXGWAS = cov(LocusGenoDiffs,XDiffs)/var(LocusGenoDiffs);	// regressions of sib pheno diffs
-		sibYGWAS = cov(LocusGenoDiffs,YDiffs)/var(LocusGenoDiffs);	// on sib genotype diffs at l
+	{		
+		LocusGenos = c(Genos[,l]);
+		p = c(p,(sum(LocusGenos)+N)/(2*N)); //"+N" because of the genotype normalization to -1,0,+1
+		LocusGenoDiffs = c(asFloat(GenoDiff[,l]));
+		sibXGWAS = cov(LocusGenoDiffs,XDiffs)/var(LocusGenoDiffs);	// sib GWAS on trait X
+		sibYGWAS = cov(LocusGenoDiffs,YDiffs)/var(LocusGenoDiffs);	// sib GWAS on trait Y
 		XBetas = c(XBetas, sibXGWAS);
-		YBetas = c(YBetas, sibYGWAS);
+		YBetas = c(YBetas, sibYGWAS);	// collect slopes
 	}
 	
 	CausalXBetas = XBetas[XLoci];	// slopes at trait-X loci in trait-X GWAS (true effects = 1)
@@ -189,15 +285,42 @@ initialize() {
 	nonCausalXBetas = XBetas[YLoci];	// slopes at trait-Y loci in trait-X GWAS (true effects = 0)
 	nonCausalYBetas = YBetas[XLoci];	// slopes at trait-X loci in trait-Y GWAS (true effects = 0)
 	
-	writeFile(XSibGWAS, ""+mean(CausalXBetas), append=T);
-	writeFile(XSibGWAS, ""+mean(nonCausalXBetas), append=T);
+	XFreqs = p[XLoci];
+	YFreqs = p[YLoci];
+	XHets = 2*XFreqs*(1-XFreqs);
+	YHets = 2*YFreqs*(1-YFreqs);	// HW heterozygosities at trait-X and at trait-Y loci
 	
-	writeFile(YSibGWAS, ""+mean(CausalYBetas), append=T);
-	writeFile(YSibGWAS, ""+mean(nonCausalYBetas), append=T);	// write to results files
+	// write to results files	
 	
+	writeFile(XSibGWAS_meanSquared_Causal, ""+mean(CausalXBetas^2), append=T);
+	writeFile(XSibGWAS_meanSquared_nonCausal, ""+mean(nonCausalXBetas^2), append=T);
+	
+	writeFile(YSibGWAS_meanSquared_Causal, ""+mean(CausalYBetas^2), append=T);
+	writeFile(YSibGWAS_meanSquared_nonCausal, ""+mean(nonCausalYBetas^2), append=T);
+	
+	writeFile(XSibGWAS_meanHetSquared_Causal, ""+mean(XHets*(CausalXBetas^2)), append=T);
+	writeFile(XSibGWAS_meanHetSquared_nonCausal, ""+mean(YHets*(nonCausalXBetas^2)), append=T);
+	
+	writeFile(YSibGWAS_meanHetSquared_Causal, ""+mean(YHets*(CausalYBetas^2)), append=T);
+	writeFile(YSibGWAS_meanHetSquared_nonCausal, ""+mean(XHets*(nonCausalYBetas^2)), append=T);
+	
+	
+	writeFile(XSibGWAS_allSquared_Causal, ""+CausalXBetas^2, append=T);
+	writeFile(XSibGWAS_allSquared_nonCausal, ""+nonCausalXBetas^2, append=T);
+	
+	writeFile(YSibGWAS_allSquared_Causal, ""+CausalYBetas^2, append=T);
+	writeFile(YSibGWAS_allSquared_nonCausal, ""+nonCausalYBetas^2, append=T);	
+	
+	writeFile(XSibGWAS_allHetSquared_Causal, ""+XHets*(CausalXBetas^2), append=T);
+	writeFile(XSibGWAS_allHetSquared_nonCausal, ""+YHets*(nonCausalXBetas^2), append=T);
+	
+	writeFile(YSibGWAS_allHetSquared_Causal, ""+YHets*(CausalYBetas^2), append=T);
+	writeFile(YSibGWAS_allHetSquared_nonCausal, ""+XHets*(nonCausalYBetas^2), append=T);
+	
+	// delete temporary data storage files
 	deleteFile(GenoDiffTrackingFile);
 	deleteFile(XDiffTrackingFile);
-	deleteFile(YDiffTrackingFile);	// delete temporary data storage files
+	deleteFile(YDiffTrackingFile);
 
 }
 
@@ -209,153 +332,29 @@ early() {
 	inds.fitnessScaling = 1-ages; // non-overlapping generations
 }
 
+// burn in
+// Random mating, so we randomly permute males and females and have them mate according to these permuted orderings. 
 
-// Assortative mating in first 20 generations
-// Determine female-male mating pairs to achieve desired female-male X-Y correlation
-1:20 reproduction() {
+1:150 reproduction() {
 	
 	inds = sim.subpopulations.individuals;
 	
 	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
-	// function to count # reference alleles at each locus across all individuals
 	countAllelesOffspring1 = "asInteger(offspring1.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring1.genome2.containsMarkerMutation(m1, applyValue));";
 	countAllelesOffspring2 = "asInteger(offspring2.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring2.genome2.containsMarkerMutation(m1, applyValue));";
-	// function to count # reference alleles at each locus in offspring
 	
-	Genos = sapply(Loci, countAlleles) - 1;
-	Genos = matrix(Genos, nrow = N);
+	// random mating	
 	
-	XGenos = Genos[,XLoci];
-	XScores = XGenos*XEffectMat;
-	XScores = apply(XScores, 0, "sum(applyValue);");	// values for trait X
-	
-	YGenos = Genos[,YLoci];
-	YScores = YGenos*YEffectMat;
-	YScores = apply(YScores, 0, "sum(applyValue);");	// values for trait Y
-	
-	XScoresFemale = XScores[femaleInds];
-	YScoresMale = YScores[maleInds];
-	
-	maxCorr = cor( sort(XScoresFemale), sort(YScoresMale) ); // maximum correlation possible given female and male trait scores, which obtains when they are assorted based on exact rank
-	
-	if (maxCorr < CorrAim) // If the maximum correlation is smaller than the desired correlation...
-	{
-		FemalesOrdered = sort(XScoresFemale);
-		FemaleOrdering = order(XScoresFemale);
-		MalesOrdered = sort(YScoresMale);
-		MaleOrdering = order(YScoresMale); // ... males and females mate based on exact rank
-	}
-	else // perform iterative procedure to get an assortment of mates with desired correlation
-	{
-		CorrNoiseNow = 4*( max( c(XScoresFemale,YScoresMale) - 1 ) - min( c(XScoresFemale,YScoresMale) - 1 ) );
-		CorrNoisePrev = 2*CorrNoiseNow;
-		CorrTooSmallPrev = 1;
-		CorrErr = 1;
-		
-		while (CorrErr > CorrTol) // until the correlation is within our error tolerance of the desired correlation
-		{
-			//catn(CorrNoiseNow);
-			//catn(CorrNoisePrev);
-			
-			
-			// perturb male and female trait values by random independent amounts;
-			// do this CorrAttempts times
-			FemaleNoise = rnorm(asInteger(CorrAttempts*N/2), 0, CorrNoiseNow);
-			MaleNoise = rnorm(asInteger(CorrAttempts*N/2), 0, CorrNoiseNow);
-			XScoresFemalePseudo = c(rep(XScoresFemale,CorrAttempts)) + FemaleNoise;
-			YScoresMalePseudo = c(rep(YScoresMale,CorrAttempts)) + MaleNoise;
-			
-			CorrErr = NULL;	
-			FemalesOrdered = NULL;		
-			FemaleOrdering = NULL;
-			MalesOrdered = NULL;		
-			MaleOrdering = NULL;
-			
-			// for each of the CorrAttempts perturbations of trait values, rank order females and males based on their perturbed trait values and calculate the correlation if they mate according to this ranking; is it within the tolerance envelope of the desired correlation, too high, or too low?
-			for (Attempt in 0:(CorrAttempts-1))	{		
-			
-			indices = asInteger(Attempt*N/2):asInteger((Attempt+1)*N/2 - 1);	
-			
-			XScoresFemalePseudoAttempt = XScoresFemalePseudo[indices];
-			YScoresMalePseudoAttempt = YScoresMalePseudo[indices];
-			
-			FemalesOrderedAttempt = sort(XScoresFemalePseudoAttempt);
-			FemalesOrdered = c(FemalesOrdered,FemalesOrderedAttempt);
-			FemaleOrderingAttempt = order(XScoresFemalePseudoAttempt);
-			FemaleOrdering = c(FemaleOrdering,FemaleOrderingAttempt);
-			
-			MalesOrderedAttempt = sort(YScoresMalePseudoAttempt);
-			MalesOrdered = c(MalesOrdered,MalesOrderedAttempt);
-			MaleOrderingAttempt = order(YScoresMalePseudoAttempt);
-			MaleOrdering = c(MaleOrdering,MaleOrderingAttempt);
-			
-			CorrNowAttempt = cor(XScoresFemale[FemaleOrderingAttempt], YScoresMale[MaleOrderingAttempt]);
-			CorrErrAttempt = abs( CorrNowAttempt - CorrAim )/CorrAim;
-			
-			CorrErr = c(CorrErr,CorrErrAttempt);
-			
-			}
-			
-			BestAttempt = whichMin(CorrErr);	// choose the perturbation that gave the female-male correlation closest to our desired correlation
-			indices = asInteger(BestAttempt*N/2):asInteger((BestAttempt+1)*N/2 - 1);
-			FemalesOrdered = FemalesOrdered[indices];
-			FemaleOrdering = FemaleOrdering[indices];
-			MalesOrdered = MalesOrdered[indices];
-			MaleOrdering = MaleOrdering[indices];
-			
-			CorrNow = cor(XScoresFemale[FemaleOrdering], YScoresMale[MaleOrdering]);
-			//catn(CorrNow);
-			
-			CorrErr = abs( CorrNow - CorrAim )/CorrAim;
-			//catn(( CorrNow - CorrAim )/CorrAim);
-			//catn(CorrErr);
-			
-			CorrTooSmallNow = (CorrNow < CorrAim);
-			//catn(CorrTooSmallNow);
-			//catn(CorrTooSmallPrev);
-			
-			CorrNoiseNowPlaceholder = CorrNoiseNow;
-			
-			
-			if (CorrTooSmallNow)	// If corr too small this time...
-			{
-				if (CorrTooSmallPrev)	// ... and too small last time,
-				{
-					CorrNoiseNow = CorrNoiseNow/2; // make perturbation sizes smaller.
-				}
-				else						// ... but too big last time,
-				{
-					CorrNoiseNow = (CorrNoiseNow + CorrNoisePrev)/2; // choose intermediate perturbation size.
-				}
-			}
-			else					// If corr too big this time...
-			{
-				if (CorrTooSmallPrev)	// ... but too small last time,
-				{
-					CorrNoiseNow = (CorrNoiseNow + CorrNoisePrev)/2; // choose intermediate perturbation size.
-				}
-				else						// ... and too big last time,
-				{
-					CorrNoiseNow = CorrNoiseNow*2; // make perturbation size larger.
-				}
-			}
-			
-			CorrNoisePrev = CorrNoiseNowPlaceholder;
-			CorrTooSmallPrev = CorrTooSmallNow;
-		
-		}
-				
-	}
+	permuteFemale = sample(0:(asInteger(N/2)-1), asInteger(N/2));
+	permuteMale = sample(0:(asInteger(N/2)-1), asInteger(N/2));	// permute males and females randomly
 	
 	FemaleInds = inds[0:(N/2-1)];
 	MaleInds = inds[(N/2):(N-1)];
-	FemaleIndsOrdered = FemaleInds[FemaleOrdering];
-	MaleIndsOrdered = MaleInds[MaleOrdering];
-	permute = sample(0:(asInteger(N/2)-1), asInteger(N/2));
-	FemaleIndsOrdered = FemaleIndsOrdered[permute];
-	MaleIndsOrdered = MaleIndsOrdered[permute];
+	FemaleIndsOrdered = FemaleInds[permuteFemale];
+	MaleIndsOrdered = MaleInds[permuteMale];
+	// female-male pairs form according to their randomly permuted ordering
 	
-	// Now that we've decided on an assortment of mates that results in the desired cross-trait correlation, we'll have these mating pairs produce two offspring each. We'll randomly permute the ordering of the mating pairs. To keep an even sex ratio in the next generation, the first 25% of mating pairs will produce two daughters, the next 50% will produce a son and a daughter, and the remaining 25% of mating pairs will produce two sons. 
+	// first quarter of mating pairs produce two daughters each; next half produce one son and one daughter each; remaining quarter produce two sons each -- this keeps sex ratio even in next gen
 	mateCount = 0;
 	for (i in 0:(N/2-1))
 	{
@@ -418,9 +417,241 @@ early() {
 		
 		YDiff = YScoreOffspring1 - YScoreOffspring2;
 		
+		// write sibling diffs in genotypes and in trait values to temporary storage files, which we'll use to perform the sibling GWAS
 		writeFile(GenoDiffTrackingFile, ""+GenoDiff, append=T);
 		writeFile(XDiffTrackingFile, ""+XDiff, append=T);
-		writeFile(YDiffTrackingFile, ""+YDiff, append=T);	// write sibling diffs in genotypes and in trait values to temporary storage files, which we'll use to perform the sibling GWAS
+		writeFile(YDiffTrackingFile, ""+YDiff, append=T);
+	
+	
+	}
+	
+	// disable this callback for this generation
+	self.active = 0;
+
+}
+
+
+
+
+// assortative mating for 20 gens
+// Determine female-male mating pairs to achieve desired female-male X-Y correlation
+151:170 reproduction() {
+	
+	inds = sim.subpopulations.individuals;
+	//catn(inds.age);
+	
+	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus across all individuals
+	countAllelesOffspring1 = "asInteger(offspring1.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring1.genome2.containsMarkerMutation(m1, applyValue));";
+	countAllelesOffspring2 = "asInteger(offspring2.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring2.genome2.containsMarkerMutation(m1, applyValue));";
+	// function to count # reference alleles at each locus in offspring
+	
+	Genos = sapply(Loci, countAlleles) - 1;
+	Genos = matrix(Genos, nrow = N);
+	
+	XGenos = Genos[,XLoci];
+	//XEffectMat = matrix(rep(aX,N_new),nrow=N_new,byrow=T);
+	XScores = XGenos*XEffectMat;
+	XScores = apply(XScores, 0, "sum(applyValue);");	// values for trait X
+	
+	YGenos = Genos[,YLoci];
+	//YEffectMat = matrix(rep(aY,N_new),nrow=N_new,byrow=T);
+	YScores = YGenos*YEffectMat;
+	YScores = apply(YScores, 0, "sum(applyValue);");	// values for trait Y
+	
+	XScoresFemale = XScores[femaleInds];
+	YScoresMale = YScores[maleInds];
+	
+	maxCorr = cor( sort(XScoresFemale), sort(YScoresMale) ); // maximum correlation possible given female and male trait scores, which obtains when they are assorted based on exact rank
+	
+	if (maxCorr < CorrAim) // If the maximum correlation is smaller than the desired correlation...
+	{
+		FemalesOrdered = sort(XScoresFemale);
+		FemaleOrdering = order(XScoresFemale);
+		MalesOrdered = sort(YScoresMale);
+		MaleOrdering = order(YScoresMale); // ... males and females mate based on exact rank
+	}
+	else	// perform iterative procedure to get an assortment of mates with desired correlation
+	{
+		CorrNoiseNow = 4*( max( c(XScoresFemale,YScoresMale) - 1 ) - min( c(XScoresFemale,YScoresMale) - 1 ) );
+		CorrNoisePrev = 2*CorrNoiseNow;
+		CorrTooSmallPrev = 1;
+		CorrErr = 1;
+		
+		while (CorrErr > CorrTol)	// until the correlation is within our error tolerance of the desired correlation
+		{
+//			catn(CorrNoiseNow);
+//			catn(CorrNoisePrev);
+			
+			// perturb male and female trait values by random independent amounts;
+			// do this CorrAttempts times
+			FemaleNoise = rnorm(asInteger(CorrAttempts*N/2), 0, CorrNoiseNow);
+			MaleNoise = rnorm(asInteger(CorrAttempts*N/2), 0, CorrNoiseNow);
+			
+			XScoresFemalePseudo = c(rep(XScoresFemale,CorrAttempts)) + FemaleNoise;
+			YScoresMalePseudo = c(rep(YScoresMale,CorrAttempts)) + MaleNoise;
+			
+			CorrErr = NULL;	
+			FemalesOrdered = NULL;		
+			FemaleOrdering = NULL;
+			MalesOrdered = NULL;		
+			MaleOrdering = NULL;
+			
+			// for each of the CorrAttempts perturbations of trait values, rank order females and males based on their perturbed trait values and calculate the correlation if they mate according to this ranking; is it within the tolerance envelope of the desired correlation, too high, or too low?
+			for (Attempt in 0:(CorrAttempts-1))	{		
+			
+			indices = asInteger(Attempt*N/2):asInteger((Attempt+1)*N/2 - 1);	
+			
+			XScoresFemalePseudoAttempt = XScoresFemalePseudo[indices];
+			YScoresMalePseudoAttempt = YScoresMalePseudo[indices];
+			
+			FemalesOrderedAttempt = sort(XScoresFemalePseudoAttempt);
+			FemalesOrdered = c(FemalesOrdered,FemalesOrderedAttempt);
+			FemaleOrderingAttempt = order(XScoresFemalePseudoAttempt);
+			FemaleOrdering = c(FemaleOrdering,FemaleOrderingAttempt);
+			
+			MalesOrderedAttempt = sort(YScoresMalePseudoAttempt);
+			MalesOrdered = c(MalesOrdered,MalesOrderedAttempt);
+			MaleOrderingAttempt = order(YScoresMalePseudoAttempt);
+			MaleOrdering = c(MaleOrdering,MaleOrderingAttempt);
+			
+			CorrNowAttempt = cor(XScoresFemale[FemaleOrderingAttempt], YScoresMale[MaleOrderingAttempt]);
+			CorrErrAttempt = abs( CorrNowAttempt - CorrAim )/CorrAim;
+			
+			CorrErr = c(CorrErr,CorrErrAttempt);
+			
+			}
+			
+			BestAttempt = whichMin(CorrErr);	// choose the perturbation that gave the female-male correlation closest to our desired correlation
+			indices = asInteger(BestAttempt*N/2):asInteger((BestAttempt+1)*N/2 - 1);
+			FemalesOrdered = FemalesOrdered[indices];
+			FemaleOrdering = FemaleOrdering[indices];
+			MalesOrdered = MalesOrdered[indices];
+			MaleOrdering = MaleOrdering[indices];
+			
+			CorrNow = cor(XScoresFemale[FemaleOrdering], YScoresMale[MaleOrdering]);
+//			catn(CorrNow);
+			
+			
+			CorrErr = abs( CorrNow - CorrAim )/CorrAim;
+//			catn(( CorrNow - CorrAim )/CorrAim);
+			//catn(CorrErr);
+			
+			CorrTooSmallNow = (CorrNow < CorrAim);
+			catn(CorrTooSmallNow);
+			catn(CorrTooSmallPrev);
+			
+			CorrNoiseNowPlaceholder = CorrNoiseNow;
+			
+			
+			if (CorrTooSmallNow)	// If corr too small this time...
+			{
+				if (CorrTooSmallPrev)	// ... and too small last time,
+				{
+					CorrNoiseNow = CorrNoiseNow/2; // make perturbation size smaller.
+				}
+				else						// ... but too big last time,
+				{
+					CorrNoiseNow = (CorrNoiseNow + CorrNoisePrev)/2; // choose intermediate perturbation size.
+				}
+			}
+			else					// If corr too big this time...
+			{
+				if (CorrTooSmallPrev)	// ... but too small last time,
+				{
+					CorrNoiseNow = (CorrNoiseNow + CorrNoisePrev)/2; // choose intermediate perturbation size.
+				}
+				else						// ... and too big last time,
+				{
+					CorrNoiseNow = CorrNoiseNow*2; // make perturbation size bigger
+				}
+			}
+			
+			CorrNoisePrev = CorrNoiseNowPlaceholder;
+			CorrTooSmallPrev = CorrTooSmallNow;
+		
+		}
+				
+	}
+	
+
+	
+	FemaleInds = inds[0:(N/2-1)];
+	MaleInds = inds[(N/2):(N-1)];
+	FemaleIndsOrdered = FemaleInds[FemaleOrdering];
+	MaleIndsOrdered = MaleInds[MaleOrdering];
+	permute = sample(0:(asInteger(N/2)-1), asInteger(N/2));
+	FemaleIndsOrdered = FemaleIndsOrdered[permute];
+	MaleIndsOrdered = MaleIndsOrdered[permute];
+	
+	// Now that we've decided on an assortment of mates that results in the desired cross-trait correlation, we'll have these mating pairs produce two offspring each. We'll randomly permute the ordering of the mating pairs. To keep an even sex ratio in the next generation, the first 25% of mating pairs will produce two daughters, the next 50% will produce a son and a daughter, and the remaining 25% of mating pairs will produce two sons. 
+	
+	mateCount = 0;
+	for (i in 0:(N/2-1))
+	{
+		mateCount = mateCount + 1;
+		
+		FemaleMate = FemaleIndsOrdered[i];
+		MaleMate = MaleIndsOrdered[i];
+		
+		if (mateCount < N/8 + 0.5)
+		{
+			sex1 = "F";
+			sex2 = "F";
+		}
+		else
+		{if (mateCount > N/8 + 0.5  &  mateCount < 3*N/8 + 0.5)
+			{
+				sex1 = "F";
+				sex2 = "M";
+			}
+			else
+			{sex1 = "M";
+				sex2 = "M";
+			}
+		}
+		
+		offspring1 = subpop.addCrossed(FemaleMate, MaleMate, sex1);
+		offspring2 = subpop.addCrossed(FemaleMate, MaleMate, sex2);
+		
+		// calculate differences between each offspring 1, offspring 2 pair in their genotypes and in their trait values
+		
+		GenoOffspring1 = sapply( Loci, countAllelesOffspring1) - 1;
+		GenoOffspring1 = matrix(GenoOffspring1, nrow = 1);
+		
+		GenoOffspring2 = sapply( Loci, countAllelesOffspring2) - 1;
+		GenoOffspring2 = matrix(GenoOffspring2, nrow = 1);
+		
+		GenoDiff = GenoOffspring1 - GenoOffspring2;
+		
+		XGenoOffspring1 = sapply( XLoci, countAllelesOffspring1) - 1;
+		XGenoOffspring1 = matrix(XGenoOffspring1, nrow = 1);
+		XScoreOffspring1 = XGenoOffspring1*XEffectMat1;
+		XScoreOffspring1 = apply(XScoreOffspring1, 0, "sum(applyValue);");
+		
+		XGenoOffspring2 = sapply( XLoci, countAllelesOffspring2) - 1;
+		XGenoOffspring2 = matrix(XGenoOffspring2, nrow = 1);
+		XScoreOffspring2 = XGenoOffspring2*XEffectMat1;
+		XScoreOffspring2 = apply(XScoreOffspring2, 0, "sum(applyValue);");
+		
+		XDiff = XScoreOffspring1 - XScoreOffspring2;
+		
+		YGenoOffspring1 = sapply( YLoci, countAllelesOffspring1) - 1;
+		YGenoOffspring1 = matrix(YGenoOffspring1, nrow = 1);
+		YScoreOffspring1 = YGenoOffspring1*YEffectMat1;
+		YScoreOffspring1 = apply(YScoreOffspring1, 0, "sum(applyValue);");
+		
+		YGenoOffspring2 = sapply( YLoci, countAllelesOffspring2) - 1;
+		YGenoOffspring2 = matrix(YGenoOffspring2, nrow = 1);
+		YScoreOffspring2 = YGenoOffspring2*YEffectMat1;
+		YScoreOffspring2 = apply(YScoreOffspring2, 0, "sum(applyValue);");
+		
+		YDiff = YScoreOffspring1 - YScoreOffspring2;
+		
+		// write sibling diffs in genotypes and in trait values to temporary storage files, which we'll use to perform the sibling GWAS
+		writeFile(GenoDiffTrackingFile, ""+GenoDiff, append=T);
+		writeFile(XDiffTrackingFile, ""+XDiff, append=T);
+		writeFile(YDiffTrackingFile, ""+YDiff, append=T);
 	
 	
 	}
@@ -432,17 +663,14 @@ early() {
 
 }
 
-
-// Random mating in remaining generations, so we randomly permute males and females and have them mate according to these permuted orderings; otherwise, everything is the same as in the assortative mating block above. 
-21: reproduction() {
+// Random mating in remaining generations; same as in gens 1-150, so see above for commented code
+171: reproduction() {
 	
 	inds = sim.subpopulations.individuals;
 	
 	countAlleles = "asInteger(inds.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(inds.genome2.containsMarkerMutation(m1, applyValue));";
 	countAllelesOffspring1 = "asInteger(offspring1.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring1.genome2.containsMarkerMutation(m1, applyValue));";
 	countAllelesOffspring2 = "asInteger(offspring2.genome1.containsMarkerMutation(m1, applyValue)) + 			asInteger(offspring2.genome2.containsMarkerMutation(m1, applyValue));";
-	
-	// random mating	
 	
 	permuteFemale = sample(0:(asInteger(N/2)-1), asInteger(N/2));
 	permuteMale = sample(0:(asInteger(N/2)-1), asInteger(N/2));	
@@ -451,7 +679,6 @@ early() {
 	MaleInds = inds[(N/2):(N-1)];
 	FemaleIndsOrdered = FemaleInds[permuteFemale];
 	MaleIndsOrdered = MaleInds[permuteMale];
-	// randomly orders females and males, then they form pairs in order
 	
 	mateCount = 0;
 	for (i in 0:(N/2-1))
@@ -527,4 +754,4 @@ early() {
 
 
 
-41 late() {sim.simulationFinished();}
+191 late() {sim.simulationFinished();}
